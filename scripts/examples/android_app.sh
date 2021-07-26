@@ -16,29 +16,74 @@
 #    limitations under the License.
 #
 
+help() {
+    echo "Usage: $0 [--sdk ANDROID-SDK-HOME] [--ndk ANDROID-NDK-HOME] [--cpu TARGET-CPU] [--build-apk]" >&2
+    echo "  ANDROID-SDK-HOME path to Android SDK (defaults to \$ANDROID_HOME)" >&2
+    echo "  ANDROID-NDK-HOME path to Android NDK (defaults to \$ANDROID_NDK_HOME)" >&2
+    echo "  TARGET_CPU       target CPU, either arm, arm64 or x64 (defaults to \$TARGET_CPU)" >&2
+    exit 1
+}
+
+declare -i BUILD_APK
+
+while (($#)); do
+    case "$1" in
+        --sdk)
+            ANDROID_HOME="$2"
+            shift
+            ;;
+        --ndk)
+            ANDROID_NDK_HOME="$2"
+            shift
+            ;;
+        --cpu)
+            TARGET_CPU="$2"
+            shift
+            ;;
+        --build-apk)
+            BUILD_APK=1
+            ;;
+        --help | -h)
+            help
+            ;;
+        *)
+            echo -e "Unknown option $1\n" >&2
+            help
+            ;;
+    esac
+    shift
+done
+
+[[ -n "$ANDROID_HOME" ]] || {
+    echo -e "ANDROID_HOME is not set\n" >&2
+    help
+}
+
+[[ -n "$ANDROID_NDK_HOME" ]] || {
+    echo -e "ANDROID_NDK_HOME is not set\n" >&2
+    help
+}
+
+[[ -n "$TARGET_CPU" ]] || {
+    echo -e "TARGET_CPU is not set\n" >&2
+    help
+}
+
 set -e
 set -x
 env
 
-if [ -z "$ANDROID_HOME" ]; then
-    echo "ANDROID_HOME not set!"
-    exit 1
-fi
-
-if [ -z "$ANDROID_NDK_HOME" ]; then
-    echo "ANDROID_NDK_HOME not set!"
-    exit 1
-fi
-
-if [ -z "$TARGET_CPU" ]; then
-    echo "TARGET_CPU not set! Candidates: arm, arm64, x86 and x64."
-    exit 1
-fi
-
 # Build shared CHIP libs
+BUILD_DIR="out/android_$TARGET_CPU"
 source scripts/activate.sh
-gn gen --check --fail-on-unused-args out/"android_$TARGET_CPU" --args="target_os=\"android\" target_cpu=\"$TARGET_CPU\" android_ndk_root=\"$ANDROID_NDK_HOME\" android_sdk_root=\"$ANDROID_HOME\""
-ninja -C out/"android_$TARGET_CPU" src/setup_payload/java src/controller/java default
+gn gen --check --fail-on-unused-args "$BUILD_DIR" --args="target_os=\"android\" target_cpu=\"$TARGET_CPU\" android_ndk_root=\"$ANDROID_NDK_HOME\" android_sdk_root=\"$ANDROID_HOME\""
+ninja -C "$BUILD_DIR" src/setup_payload/java src/controller/java default
 
-rsync -a out/"android_$TARGET_CPU"/lib/*.jar src/android/CHIPTool/app/libs
-rsync -a out/"android_$TARGET_CPU"/lib/jni/* src/android/CHIPTool/app/src/main/jniLibs
+rsync -a "$BUILD_DIR"/lib/*.jar src/android/CHIPTool/app/libs
+rsync -a "$BUILD_DIR"/lib/jni/* src/android/CHIPTool/app/src/main/jniLibs
+
+# Build CHIPTook APK if requested
+if ((BUILD_APK)); then
+    yes | "$ANDROID_HOME"/tools/bin/sdkmanager --licenses
+    (cd src/android/CHIPTool && ./gradlew build)
+fi
