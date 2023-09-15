@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <list>
 #include <map>
 #include <memory>
 #include <set>
@@ -114,6 +115,7 @@ public:
     CHIP_ERROR Resolve(const char * name, const char * type, DnssdServiceProtocol protocol, chip::Inet::IPAddressType addressType,
                        chip::Inet::IPAddressType transportType, chip::Inet::InterfaceId interface, DnssdResolveCallback callback,
                        void * context);
+    void StopResolve(const char * name);
 
     Poller & GetPoller() { return mPoller; }
 
@@ -131,6 +133,7 @@ private:
 
     struct ResolveContext
     {
+        size_t mNumber; // unique number for this context
         MdnsAvahi * mInstance;
         DnssdResolveCallback mCallback;
         void * mContext;
@@ -139,11 +142,28 @@ private:
         AvahiProtocol mTransport;
         AvahiProtocol mAddressType;
         std::string mFullType;
-        uint8_t mAttempts = 0;
+        uint8_t mAttempts                = 0;
+        AvahiServiceResolver * mResolver = nullptr;
+
+        ~ResolveContext()
+        {
+            if (mResolver != nullptr)
+            {
+                avahi_service_resolver_free(mResolver);
+                mResolver = nullptr;
+            }
+        }
     };
 
     MdnsAvahi() : mClient(nullptr), mGroup(nullptr) {}
     static MdnsAvahi sInstance;
+
+    /// Allocates a new resolve context with a unique `mNumber`
+    ResolveContext * AllocateResolveContext();
+
+    ResolveContext * ResolveContextForHandle(size_t handle);
+    void FreeResolveContext(size_t handle);
+    void FreeResolveContext(const char * name);
 
     static void HandleClientState(AvahiClient * client, AvahiClientState state, void * context);
     void HandleClientState(AvahiClient * client, AvahiClientState state);
@@ -167,6 +187,10 @@ private:
     AvahiClient * mClient;
     AvahiEntryGroup * mGroup;
     Poller mPoller;
+
+    // Handling of allocated resolves
+    size_t mResolveCount = 0;
+    std::list<ResolveContext *> mAllocatedResolves;
 };
 
 } // namespace Dnssd
