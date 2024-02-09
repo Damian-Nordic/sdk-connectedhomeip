@@ -17,6 +17,7 @@
 
 #include "PSASessionKeystore.h"
 
+#include <lib/support/CHIPMem.h>
 #include <psa/crypto.h>
 
 namespace chip {
@@ -188,7 +189,7 @@ void PSASessionKeystore::DestroyKey(HkdfKeyHandle & key)
     auto & keyId = key.AsMutable<psa_key_id_t>();
 
     psa_destroy_key(keyId);
-    keyId = 0;
+    keyId = PSA_KEY_ID_NULL;
 }
 
 } // namespace Crypto
